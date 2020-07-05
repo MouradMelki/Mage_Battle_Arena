@@ -1,0 +1,36 @@
+﻿{
+	"Character": {
+        "Health": 100,
+        "Speed": 5,
+        "NoAimZoneRadius": 0.2,
+        "FirePointDistance": 1.15,
+        "FireRate": 1,
+        "ScaleSpeed": 1,
+        "AimMaxScale": 10,
+        "OrbitRadius": 1,
+        "NormalAttack": "DefaultNormalAttack"
+	},
+	"Player": {
+		"parent": "Character",
+		"NormalAttack": "PlayerNormalAttack"
+	},
+	"Enemy":{
+		"parent": "Character",
+		"NormalAttack": "EnemyNormalAttack"
+	},
+
+	"DefaultNormalAttack": {
+        "SpeedOfAttack": 6,
+        "Damage": 10,
+        "Range": 8,
+        "TagProjectile": "FriendlyFire"
+    },
+    "PlayerNormalAttack": {
+    	"parent": "DefaultNormalAttack",
+    	"Damage": 100
+    },
+    "EnemyNormalAttack": {
+    	"parent": "DefaultNormalAttack",
+        "TagProjectile": "EnemyFire"
+    }
+}
