@@ -5,8 +5,10 @@ using UnityEngine.AI;
 using UnityEngine.UI;
 using System;
 
-public class EnemyBot : MonoBehaviour
+public class EnemyBot
 {
+    private const string PlayerTag = "Player";
+
     public float FireRate               { get; set; }
     public float FirePointDistance      { get; set; }
     public float OrbitRadius            { get; set; }
@@ -41,7 +43,7 @@ public class EnemyBot : MonoBehaviour
                         closest = enemyPosToPlayer.magnitude;
                         NormalAttack.Direction = enemyPosToPlayer;
                         FirePoint.position = EnemyTransform.transform.position + NormalAttack.Direction.normalized * FirePointDistance;
-                        GameObject enemyFire = Instantiate(Projectile, FirePoint.position, Quaternion.identity) as GameObject;
+                        GameObject enemyFire = UnityEngine.Object.Instantiate(Projectile, FirePoint.position, Quaternion.identity) as GameObject;
                         enemyFire.GetComponent<Rigidbody>().velocity = NormalAttack.Direction.normalized * NormalAttack.SpeedOfAttack;
                         enemyFire.tag = NormalAttack.TagProjectile;
                         enemyFire.GetComponent<ProjectileBehaviour>().NormalAttack = NormalAttack;
@@ -67,13 +69,18 @@ public class EnemyBot : MonoBehaviour
     {
         if (!Player)
         {
-            Player = GameObject.FindGameObjectWithTag("Player");
+            Player = GameObject.FindGameObjectWithTag(PlayerTag);
         }
 
-        if (Player)
+        if (Player && Nav)
         {
             if (!IsDead)
             {
+                if (!Nav.enabled)
+                {
+                    Nav.enabled = true;
+                }
+
                 Nav.SetDestination(Player.transform.position);
             }
             else
@@ -83,9 +90,15 @@ public class EnemyBot : MonoBehaviour
         }
     }
 
-    public void Aiming() => throw new NotImplementedException();
+    public void Aiming()
+    {
+    }
 
-    public void NotAiming() => throw new NotImplementedException();
+    public void NotAiming()
+    {
+    }
 
-    public void AttachedCanvasMovement() => throw new NotImplementedException();
+    public void AttachedCanvasMovement()
+    {
+    }
 }

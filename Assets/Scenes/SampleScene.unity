@@ -974,6 +974,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6971bee17287e4606b311f33eae253a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  TimeUpPanel: {fileID: 1271081919}
 --- !u!4 &611348500
 Transform:
   m_ObjectHideFlags: 0

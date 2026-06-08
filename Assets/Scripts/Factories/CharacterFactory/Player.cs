@@ -2,7 +2,7 @@
 using System.Collections;
 using UnityEngine.UI;
 
-public class Player : MonoBehaviour
+public class Player
 {
     public float FirePointDistance              { get; set; }
     public float OrbitRadius                    { get; set; }
@@ -53,7 +53,7 @@ public class Player : MonoBehaviour
             NormalAttack.Direction = AimAutomaticallyAtEnemy(NormalAttack.Direction, PlayerTransform, NormalAttack.Range + OrbitRadius);
         }
         FirePoint.position = PlayerTransform.position + NormalAttack.Direction.normalized * FirePointDistance;
-        GameObject friendlyFire = Instantiate(Projectile, FirePoint.position, Quaternion.identity) as GameObject;
+        GameObject friendlyFire = UnityEngine.Object.Instantiate(Projectile, FirePoint.position, Quaternion.identity) as GameObject;
         friendlyFire.GetComponent<Rigidbody>().velocity = NormalAttack.Direction.normalized * NormalAttack.SpeedOfAttack;
         friendlyFire.tag = NormalAttack.TagProjectile;
         friendlyFire.GetComponent<ProjectileBehaviour>().NormalAttack = NormalAttack;

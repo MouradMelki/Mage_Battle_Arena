@@ -15,9 +15,13 @@ public class PlayerController : MonoBehaviour
     public Rigidbody m_Canvas_Attack_HUD;
     public GameObject m_projectile;
     public RectTransform m_Canvas_Attack_HUD_Aim;
+    public bool IsRespawning { get; set; }
 
     public bool Damaged { get; set; }
-    private readonly string enemyFire = "EnemyFire";
+    private const string EnemyFireTag = "EnemyFire";
+    private const string FriendlyFireTag = "FriendlyFire";
+    private const string LeftJoystickTag = "Left_Joystick";
+    private const string RightJoystickTag = "Right_Joystick";
     private GameObject LeftJoystickGO;
     private GameObject RightJoystickGO;
     private FloatingJoystick FloatingJoystickRight;
@@ -27,11 +31,25 @@ public class PlayerController : MonoBehaviour
 
     void Awake()
     {
-        LeftJoystickGO = GameObject.FindGameObjectWithTag("Left_Joystick");
-        RightJoystickGO = GameObject.FindGameObjectWithTag("Right_Joystick");
+        LeftJoystickGO = GameObject.FindGameObjectWithTag(LeftJoystickTag);
+        RightJoystickGO = GameObject.FindGameObjectWithTag(RightJoystickTag);
+
+        if (!LeftJoystickGO || !RightJoystickGO)
+        {
+            Debug.LogError("PlayerController requires Left_Joystick and Right_Joystick tagged objects in the scene.", this);
+            enabled = false;
+            return;
+        }
 
         FloatingJoystickLeft = LeftJoystickGO.GetComponent<FloatingJoystick>();
         FloatingJoystickRight = RightJoystickGO.GetComponent<FloatingJoystick>();
+
+        if (!FloatingJoystickLeft || !FloatingJoystickRight || !healthSlider || !m_firePoint || !m_Canvas_HUD || !m_Canvas_Attack_HUD || !m_projectile || !m_Canvas_Attack_HUD_Aim || !RespawnPos)
+        {
+            Debug.LogError("PlayerController is missing one or more required scene references.", this);
+            enabled = false;
+            return;
+        }
 
         Player = new Player()
         {
@@ -64,7 +82,7 @@ public class PlayerController : MonoBehaviour
                 SpeedOfAttack = 6f,
                 Damage = 200f,
                 Range = 8f,
-                TagProjectile = "FriendlyFire"
+                TagProjectile = FriendlyFireTag
             }
         };
 
@@ -80,9 +98,16 @@ public class PlayerController : MonoBehaviour
     {
         Player.AttachedCanvasMovement();
 
-        if (Player.IsDead)
+        if (Player.IsDead && !IsRespawning)
         {
-            GameController.gameController.RespawnPlayer(this);
+            if (GameController.gameController)
+            {
+                GameController.gameController.RespawnPlayer(this);
+            }
+            else
+            {
+                Debug.LogError("PlayerController cannot respawn because no GameController is available.", this);
+            }
         }
     }
 
@@ -95,7 +120,11 @@ public class PlayerController : MonoBehaviour
 
         if (shoot)
         {
-            Player.Shoot();
+            if (!Player.IsDead)
+            {
+                Player.Shoot();
+            }
+
             shoot = false;
         }
     }
@@ -117,7 +146,7 @@ public class PlayerController : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (collision.gameObject.tag.Equals(enemyFire))
+        if (collision.gameObject.CompareTag(EnemyFireTag))
         {
             Player.TakeDamage(collision.gameObject.GetComponent<ProjectileBehaviour>().NormalAttack.Damage);
             Damaged |= !Player.IsDead;

@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 
-public class NormalAttack : MonoBehaviour
+public class NormalAttack
 {
     public float SpeedOfAttack { get; set; }
     public float Range { get; set; }

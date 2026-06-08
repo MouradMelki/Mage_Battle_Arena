@@ -8,6 +8,5 @@ public class EndGameUIObserver : Observer
 
     public override void UpdateObserver()
     {
-        throw new NotImplementedException();
     }
 }

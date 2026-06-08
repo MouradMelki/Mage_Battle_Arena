@@ -13,7 +13,14 @@ public class DamageUIObserver : Observer
     public DamageUIObserver(PlayerController playerController)
     {
         DamageImage = GameObject.FindGameObjectWithTag("DamageImage");
-        damageImage = DamageImage.GetComponent<Image>();
+        if (DamageImage)
+        {
+            damageImage = DamageImage.GetComponent<Image>();
+        }
+        else
+        {
+            Debug.LogError("DamageUIObserver requires a DamageImage tagged Image object in the scene.");
+        }
 
         this.playerController = playerController;
         this.playerController.Attach(this);
@@ -26,6 +33,11 @@ public class DamageUIObserver : Observer
 
     private void FlashDamage(bool damaged)
     {
+        if (!damageImage)
+        {
+            return;
+        }
+
         if (damaged)
         {
             damageImage.color = flashColour;
