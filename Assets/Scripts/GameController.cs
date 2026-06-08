@@ -1,57 +1,78 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 public class GameController : MonoBehaviour
 {
-    public static GameController gameController;
-    public GameObject TimeUpPanel;
+    public static GameController Instance { get; private set; }
 
-    public float Possetion { get; set; }
+    [Header("Match")]
+    [SerializeField]
+    private float matchDurationSeconds = 60f;
+    [SerializeField]
+    private Text timerText;
+    [SerializeField, FormerlySerializedAs("TimeUpPanel")]
+    private GameObject timeUpPanel;
 
-    private const string TimeUpPanelName = "TimeUpPannel";
-    private const float ReSpawnTime = 5f;
-    private const float MatchMinutes = 1f;
-    private List<Observer> observers = new List<Observer>();
+    [Header("Respawn")]
+    [SerializeField]
+    private float respawnDelaySeconds = 5f;
+
+    private WaitForSeconds respawnDelay;
+    private float matchStartTime;
+    private bool matchEnded;
+
+    private void Awake()
+    {
+        Time.timeScale = 1f;
+        respawnDelay = new WaitForSeconds(respawnDelaySeconds);
+
+        if (Instance && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+    }
 
     private void Start()
     {
-        Possetion = 0f;
-
-        if (!TimeUpPanel)
+        if (!ValidateReferences())
         {
-            TimeUpPanel = GameObject.Find(TimeUpPanelName);
+            enabled = false;
+            return;
         }
 
-        if (TimeUpPanel)
-        {
-            TimeUpPanel.SetActive(false);
-        }
-        else
-        {
-            Debug.LogWarning("GameController could not find TimeUpPannel. Match-end UI must be wired in the Unity Editor.", this);
-        }
-
-        new TimerUIObserver(this, MatchMinutes);
+        matchStartTime = Time.time;
+        timeUpPanel.SetActive(false);
+        UpdateTimerText(0f);
     }
 
-    void Awake()
+    private void Update()
     {
-        Time.timeScale = 1f;
+        if (matchEnded)
+        {
+            return;
+        }
 
-        if (gameController == null)
+        float elapsedTime = Time.time - matchStartTime;
+        UpdateTimerText(elapsedTime);
+
+        if (elapsedTime >= matchDurationSeconds)
         {
-            gameController = this;
-        } else if (gameController != this)
-        {
-            Destroy(gameObject);
+            EndMatch();
         }
     }
 
-    void Update()
+    private void OnDestroy()
     {
-        NotifyAllObservers();
+        if (Instance == this)
+        {
+            Instance = null;
+            Time.timeScale = 1f;
+        }
     }
 
     public void RespawnPlayer(PlayerController playerController)
@@ -61,78 +82,70 @@ public class GameController : MonoBehaviour
             return;
         }
 
-        playerController.IsRespawning = true;
         StartCoroutine(RespawnPlayerCoroutine(playerController));
     }
 
-    public IEnumerator RespawnPlayerCoroutine(PlayerController playerController)
-    {
-        playerController.gameObject.SetActive(false);
-        yield return new WaitForSeconds(ReSpawnTime);
-        playerController.transform.position = playerController.RespawnPos.position;
-        playerController.Player.CurrentHealth = playerController.Player.StartingHealth;
-        playerController.Player.HealthSlider.value = playerController.Player.StartingHealth;
-        playerController.transform.rotation = Quaternion.Euler(0f, 0f, 0f);
-        playerController.Player.IsDead = false;
-        playerController.IsRespawning = false;
-        playerController.gameObject.SetActive(true);
-    }
-
-    public void RespawnPlayer(EnemyController enemyController)
+    public void RespawnEnemy(EnemyController enemyController)
     {
         if (!enemyController || enemyController.IsRespawning)
         {
             return;
         }
 
-        enemyController.IsRespawning = true;
-        StartCoroutine(RespawnPlayerCoroutine(enemyController));
+        StartCoroutine(RespawnEnemyCoroutine(enemyController));
     }
 
-    public IEnumerator RespawnPlayerCoroutine(EnemyController enemyController)
+    private IEnumerator RespawnPlayerCoroutine(PlayerController playerController)
     {
+        playerController.BeginRespawn();
+        playerController.gameObject.SetActive(false);
+        yield return respawnDelay;
+        playerController.gameObject.SetActive(true);
+        playerController.CompleteRespawn();
+    }
+
+    private IEnumerator RespawnEnemyCoroutine(EnemyController enemyController)
+    {
+        enemyController.BeginRespawn();
         enemyController.gameObject.SetActive(false);
-        yield return new WaitForSeconds(ReSpawnTime);
-        enemyController.transform.position = enemyController.RespawnPos.position;
-        enemyController.EnemyBot.CurrentHealth = enemyController.EnemyBot.StartingHealth;
-        enemyController.EnemyBot.HealthSlider.value = enemyController.EnemyBot.StartingHealth;
-        enemyController.transform.rotation = Quaternion.Euler(0f,180f,0f);
-        enemyController.EnemyBot.IsDead = false;
-        if (enemyController.EnemyBot.Nav)
-        {
-            enemyController.EnemyBot.Nav.enabled = true;
-        }
-        enemyController.IsRespawning = false;
+        yield return respawnDelay;
         enemyController.gameObject.SetActive(true);
+        enemyController.CompleteRespawn();
     }
 
-    public void ShowTimeUpPanel()
+    private bool ValidateReferences()
     {
-        if (TimeUpPanel)
-        {
-            TimeUpPanel.SetActive(true);
-        }
+        bool valid = true;
+
+        valid &= LogMissing(timerText, nameof(timerText));
+        valid &= LogMissing(timeUpPanel, nameof(timeUpPanel));
+
+        return valid;
     }
 
-    public bool GameWon()
+    private bool LogMissing(Object reference, string referenceName)
     {
-        if (Possetion > 50f)
+        if (reference)
         {
             return true;
         }
 
+        Debug.LogError($"{nameof(GameController)} is missing required reference: {referenceName}.", this);
         return false;
     }
 
-    public void Attach(Observer observer)
+    private void UpdateTimerText(float elapsedTime)
     {
-        observers.Add(observer);
+        int minutes = Mathf.FloorToInt(elapsedTime / 60f);
+        int seconds = Mathf.FloorToInt(elapsedTime % 60f);
+        timerText.text = $"{minutes:00}:{seconds:00}";
     }
 
-    public void NotifyAllObservers()
+    private void EndMatch()
     {
-        observers.ForEach(delegate (Observer observer) {
-            observer.UpdateObserver();
-        });
+        matchEnded = true;
+        UpdateTimerText(matchDurationSeconds);
+        timeUpPanel.SetActive(true);
+        Time.timeScale = 0f;
     }
 }

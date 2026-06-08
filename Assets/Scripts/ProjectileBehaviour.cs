@@ -1,15 +1,12 @@
-﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class ProjectileBehaviour : MonoBehaviour
 {
-    private Vector3 Direction;
     private Vector3 startingPosition;
-    private Vector3 movedDistance;
-    private Rigidbody aimRigidbody;
-    private GameObject Player;
-    public NormalAttack NormalAttack { get; set; }
+    private float rangeSqr;
+    private bool configured;
+
+    public float Damage { get; private set; }
 
     private void Awake()
     {
@@ -18,8 +15,13 @@ public class ProjectileBehaviour : MonoBehaviour
 
     private void FixedUpdate()
     {
-        movedDistance = transform.position - startingPosition;
-        if (movedDistance.magnitude > NormalAttack.Range)
+        if (!configured)
+        {
+            return;
+        }
+
+        Vector3 movedDistance = transform.position - startingPosition;
+        if (movedDistance.sqrMagnitude > rangeSqr)
         {
             Destroy(gameObject);
         }
@@ -28,5 +30,13 @@ public class ProjectileBehaviour : MonoBehaviour
     private void OnCollisionEnter(Collision collision)
     {
         Destroy(gameObject);
+    }
+
+    public void Configure(NormalAttack attack)
+    {
+        Damage = attack.Damage;
+        rangeSqr = attack.Range * attack.Range;
+        startingPosition = transform.position;
+        configured = true;
     }
 }

@@ -974,7 +974,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6971bee17287e4606b311f33eae253a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  TimeUpPanel: {fileID: 1271081919}
+  matchDurationSeconds: 60
+  timerText: {fileID: 1087406536}
+  timeUpPanel: {fileID: 1271081919}
+  respawnDelaySeconds: 5
 --- !u!4 &611348500
 Transform:
   m_ObjectHideFlags: 0
@@ -2311,37 +2314,47 @@ PrefabInstance:
       objectReference: {fileID: 158931514}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: m_speed
+      propertyPath: leftJoystick
+      value:
+      objectReference: {fileID: 119262351}
+    - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
+        type: 3}
+      propertyPath: rightJoystick
+      value:
+      objectReference: {fileID: 1359991097}
+    - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
+        type: 3}
+      propertyPath: moveSpeed
       value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: m_firePoint
+      propertyPath: firePoint
       value: 
       objectReference: {fileID: 1720625875}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: m_projectile
+      propertyPath: projectilePrefab
       value: 
       objectReference: {fileID: 16, guid: d175c002ae54748ee97f8b850b0403b0, type: 3}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: m_Canvas_HUD
+      propertyPath: hudCanvas
       value: 
       objectReference: {fileID: 1517560282}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: m_Canvas_Attack_HUD
+      propertyPath: attackHudBody
       value: 
       objectReference: {fileID: 2124418322}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: m_Canvas_Attack_HUD_Aim
+      propertyPath: attackHudAim
       value: 
       objectReference: {fileID: 620659297}
     - target: {fileID: 3252918259311925628, guid: 9c7c0e0f767d5428bbd697144276ae23,
         type: 3}
-      propertyPath: RespawnPos
+      propertyPath: respawnPoint
       value: 
       objectReference: {fileID: 692882079}
     - target: {fileID: 3103393512117608204, guid: 9c7c0e0f767d5428bbd697144276ae23,
@@ -2692,9 +2705,14 @@ PrefabInstance:
       objectReference: {fileID: 881785224}
     - target: {fileID: 9200587048722549120, guid: 04262bd6d6ad145c597e28472cdda3ac,
         type: 3}
-      propertyPath: RespawnPos
+      propertyPath: respawnPoint
       value: 
       objectReference: {fileID: 917893677}
+    - target: {fileID: 9200587048722549120, guid: 04262bd6d6ad145c597e28472cdda3ac,
+        type: 3}
+      propertyPath: playerTarget
+      value:
+      objectReference: {fileID: 1880691417}
     - target: {fileID: 3919387821914187008, guid: 04262bd6d6ad145c597e28472cdda3ac,
         type: 3}
       propertyPath: m_RootOrder

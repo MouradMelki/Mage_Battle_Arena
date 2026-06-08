@@ -1,167 +1,410 @@
-﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 public class PlayerController : MonoBehaviour
 {
-    public float m_speed;
-    public Slider healthSlider;
-    public Player Player { get; set; }
-    public bool shoot;
-    public Transform m_firePoint;
-    public Transform m_Canvas_HUD;
-    public Transform RespawnPos;
-    public Rigidbody m_Canvas_Attack_HUD;
-    public GameObject m_projectile;
-    public RectTransform m_Canvas_Attack_HUD_Aim;
-    public bool IsRespawning { get; set; }
-
-    public bool Damaged { get; set; }
     private const string EnemyFireTag = "EnemyFire";
     private const string FriendlyFireTag = "FriendlyFire";
-    private const string LeftJoystickTag = "Left_Joystick";
-    private const string RightJoystickTag = "Right_Joystick";
-    private GameObject LeftJoystickGO;
-    private GameObject RightJoystickGO;
-    private FloatingJoystick FloatingJoystickRight;
-    private FloatingJoystick FloatingJoystickLeft;
-    private Vector3 movement = Vector3.zero;
-    private List<Observer> observers = new List<Observer>();
+    private const float MinMoveSqrMagnitude = 0.0001f;
 
-    void Awake()
+    [Header("Movement")]
+    [SerializeField, FormerlySerializedAs("m_speed")]
+    private float moveSpeed = 5f;
+
+    [Header("Combat")]
+    [SerializeField, FormerlySerializedAs("m_firePoint")]
+    private Transform firePoint;
+    [SerializeField, FormerlySerializedAs("m_projectile")]
+    private GameObject projectilePrefab;
+    [SerializeField]
+    private float projectileSpeed = 6f;
+    [SerializeField]
+    private float projectileDamage = 200f;
+    [SerializeField]
+    private float projectileRange = 8f;
+    [SerializeField]
+    private float fireRate = 1f;
+    [SerializeField]
+    private float firePointDistance = 1.15f;
+    [SerializeField]
+    private float noAimZoneRadius = 0.2f;
+    [SerializeField]
+    private LayerMask enemyLayerMask;
+
+    [Header("Aim UI")]
+    [SerializeField, FormerlySerializedAs("m_Canvas_Attack_HUD")]
+    private Rigidbody attackHudBody;
+    [SerializeField, FormerlySerializedAs("m_Canvas_Attack_HUD_Aim")]
+    private RectTransform attackHudAim;
+    [SerializeField]
+    private float aimScaleSpeed = 1f;
+    [SerializeField]
+    private float aimMaxScale = 10f;
+    [SerializeField]
+    private float orbitRadius = 1f;
+
+    [Header("Health")]
+    [SerializeField]
+    private float startingHealth = 100f;
+    [SerializeField]
+    private Slider healthSlider;
+    [SerializeField]
+    private Image damageImage;
+    [SerializeField]
+    private float flashSpeed = 5f;
+    [SerializeField]
+    private Color flashColour = new Color(1f, 0f, 0f, 0.35f);
+
+    [Header("Scene References")]
+    [SerializeField]
+    private FloatingJoystick leftJoystick;
+    [SerializeField]
+    private FloatingJoystick rightJoystick;
+    [SerializeField, FormerlySerializedAs("m_Canvas_HUD")]
+    private Transform hudCanvas;
+    [SerializeField, FormerlySerializedAs("RespawnPos")]
+    private Transform respawnPoint;
+
+    private readonly Collider[] autoAimHits = new Collider[16];
+    private Rigidbody playerRigidbody;
+    private NormalAttack normalAttack;
+    private Vector3 hudOffset;
+    private Vector3 attackHudOffset;
+    private Vector3 aimStartingScale;
+    private Vector3 queuedShotDirection;
+    private bool leftJoystickActive;
+    private bool rightJoystickActive;
+    private bool shootRequested;
+    private bool damagedThisFrame;
+    private float currentHealth;
+    private float nextFireTime;
+    private bool isDead;
+
+    public bool IsDead => isDead;
+    public bool IsRespawning { get; private set; }
+    public float NoAimZoneRadius => noAimZoneRadius;
+    public Transform RespawnPoint => respawnPoint;
+
+    private void Awake()
     {
-        LeftJoystickGO = GameObject.FindGameObjectWithTag(LeftJoystickTag);
-        RightJoystickGO = GameObject.FindGameObjectWithTag(RightJoystickTag);
+        playerRigidbody = GetComponent<Rigidbody>();
 
-        if (!LeftJoystickGO || !RightJoystickGO)
+        if (enemyLayerMask == 0)
         {
-            Debug.LogError("PlayerController requires Left_Joystick and Right_Joystick tagged objects in the scene.", this);
+            enemyLayerMask = LayerMask.GetMask("Enemy");
+        }
+
+        if (!ValidateReferences())
+        {
             enabled = false;
             return;
         }
 
-        FloatingJoystickLeft = LeftJoystickGO.GetComponent<FloatingJoystick>();
-        FloatingJoystickRight = RightJoystickGO.GetComponent<FloatingJoystick>();
-
-        if (!FloatingJoystickLeft || !FloatingJoystickRight || !healthSlider || !m_firePoint || !m_Canvas_HUD || !m_Canvas_Attack_HUD || !m_projectile || !m_Canvas_Attack_HUD_Aim || !RespawnPos)
+        normalAttack = new NormalAttack
         {
-            Debug.LogError("PlayerController is missing one or more required scene references.", this);
-            enabled = false;
-            return;
-        }
-
-        Player = new Player()
-        {
-            LeftJoystick = LeftJoystickGO.GetComponent<Joystick>(),
-            RightJoystick = RightJoystickGO.GetComponent<Joystick>(),
-            CurrentHealth = 100f,
-            StartingHealth = 100f,
-            HealthSlider = healthSlider,
-            Speed = m_speed,
-            PlayerRigidbody = GetComponent<Rigidbody>(),
-            Movement = movement,
-            PlayerTransform = transform,
-            NoAimZoneRadius = 0.2f,
-            FirePoint = m_firePoint,
-            FirePointDistance = 1.15f,
-            Projectile = m_projectile,
-            FireRate = 1f,
-            Canvas_HUD = m_Canvas_HUD,
-            Canvas_Attack_HUD = m_Canvas_Attack_HUD,
-            Offset_hud = m_Canvas_HUD.position - transform.position,
-            Offset_attack_hud = m_Canvas_Attack_HUD.position - transform.position,
-            ScaleSpeed = 1f,
-            AimMaxScale = 10f,
-            AimStartingScale = m_Canvas_Attack_HUD_Aim.localScale,
-            Canvas_Attack_HUD_Aim = m_Canvas_Attack_HUD_Aim,
-            OrbitRadius = 1f,
-            IsDead = false,
-            NormalAttack = new NormalAttack
-            {
-                SpeedOfAttack = 6f,
-                Damage = 200f,
-                Range = 8f,
-                TagProjectile = FriendlyFireTag
-            }
+            SpeedOfAttack = projectileSpeed,
+            Damage = projectileDamage,
+            Range = projectileRange,
+            TagProjectile = FriendlyFireTag
         };
 
-        FloatingJoystickLeft.PlayerController = this;
-        FloatingJoystickRight.PlayerController = this;
-        FloatingJoystickRight.NoAimZoneRadius = Player.NoAimZoneRadius;
-        FloatingJoystickRight.FireRate = Player.FireRate;
+        hudOffset = hudCanvas.position - transform.position;
+        attackHudOffset = attackHudBody.position - transform.position;
+        aimStartingScale = attackHudAim.localScale;
 
-        new DamageUIObserver(this);
+        leftJoystick.PlayerController = this;
+        rightJoystick.PlayerController = this;
+
+        ResetHealth();
+        ClearDamageFlash();
     }
 
-    void Update()
+    private void Update()
     {
-        Player.AttachedCanvasMovement();
-
-        if (Player.IsDead && !IsRespawning)
-        {
-            if (GameController.gameController)
-            {
-                GameController.gameController.RespawnPlayer(this);
-            }
-            else
-            {
-                Debug.LogError("PlayerController cannot respawn because no GameController is available.", this);
-            }
-        }
+        UpdateAttachedHud();
+        UpdateAimHud();
+        UpdateDamageFlash();
     }
 
     private void FixedUpdate()
     {
-        if (Player.LJoyStickAct && !Player.IsDead)
+        if (!isDead && leftJoystickActive)
         {
-            Player.MovementControl();
+            MoveFromJoystick();
         }
 
-        if (shoot)
+        if (shootRequested)
         {
-            if (!Player.IsDead)
+            if (!isDead)
             {
-                Player.Shoot();
+                Shoot(queuedShotDirection);
             }
 
-            shoot = false;
-        }
-    }
-
-    private void OnGUI()
-    {
-        NotifyAllObservers();
-        Damaged = false;
-
-        if (Player.RJoyStickAct)
-        {
-            Player.Aiming();
-        }
-        else if (!Player.RJoyStickAct)
-        {
-            Player.NotAiming();
+            shootRequested = false;
         }
     }
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (collision.gameObject.CompareTag(EnemyFireTag))
+        if (!collision.gameObject.CompareTag(EnemyFireTag))
         {
-            Player.TakeDamage(collision.gameObject.GetComponent<ProjectileBehaviour>().NormalAttack.Damage);
-            Damaged |= !Player.IsDead;
+            return;
+        }
+
+        if (collision.gameObject.TryGetComponent(out ProjectileBehaviour projectile))
+        {
+            TakeDamage(projectile.Damage);
+        }
+        else
+        {
+            Debug.LogError("Enemy projectile is missing ProjectileBehaviour.", collision.gameObject);
         }
     }
 
-    public void Attach(Observer observer)
+    public void SetLeftJoystickActive(bool active)
     {
-        observers.Add(observer);
+        leftJoystickActive = active;
     }
 
-    public void NotifyAllObservers()
+    public void SetRightJoystickActive(bool active)
     {
-        observers.ForEach(delegate (Observer observer) {
-            observer.UpdateObserver();
-        });
+        rightJoystickActive = active;
+    }
+
+    public void QueueShot(Vector3 direction)
+    {
+        if (isDead || Time.time < nextFireTime)
+        {
+            return;
+        }
+
+        queuedShotDirection = direction;
+        shootRequested = true;
+        nextFireTime = Time.time + fireRate;
+    }
+
+    public void BeginRespawn()
+    {
+        IsRespawning = true;
+    }
+
+    public void CompleteRespawn()
+    {
+        transform.position = respawnPoint.position;
+        transform.rotation = Quaternion.identity;
+        ResetHealth();
+        rightJoystickActive = false;
+        leftJoystickActive = false;
+        shootRequested = false;
+        IsRespawning = false;
+    }
+
+    private bool ValidateReferences()
+    {
+        bool valid = true;
+
+        valid &= LogMissing(playerRigidbody, "Rigidbody");
+        valid &= LogMissing(leftJoystick, nameof(leftJoystick));
+        valid &= LogMissing(rightJoystick, nameof(rightJoystick));
+        valid &= LogMissing(healthSlider, nameof(healthSlider));
+        valid &= LogMissing(damageImage, nameof(damageImage));
+        valid &= LogMissing(firePoint, nameof(firePoint));
+        valid &= LogMissing(projectilePrefab, nameof(projectilePrefab));
+        valid &= LogMissing(hudCanvas, nameof(hudCanvas));
+        valid &= LogMissing(attackHudBody, nameof(attackHudBody));
+        valid &= LogMissing(attackHudAim, nameof(attackHudAim));
+        valid &= LogMissing(respawnPoint, nameof(respawnPoint));
+
+        return valid;
+    }
+
+    private bool LogMissing(Object reference, string referenceName)
+    {
+        if (reference)
+        {
+            return true;
+        }
+
+        Debug.LogError($"{nameof(PlayerController)} on {name} is missing required reference: {referenceName}.", this);
+        return false;
+    }
+
+    private void MoveFromJoystick()
+    {
+        Vector3 direction = new Vector3(leftJoystick.Horizontal, 0f, leftJoystick.Vertical);
+        if (direction.sqrMagnitude <= MinMoveSqrMagnitude)
+        {
+            return;
+        }
+
+        Vector3 normalizedDirection = direction.normalized;
+        Vector3 movement = normalizedDirection * moveSpeed * Time.fixedDeltaTime;
+        playerRigidbody.MovePosition(playerRigidbody.position + movement);
+        playerRigidbody.MoveRotation(Quaternion.LookRotation(normalizedDirection));
+    }
+
+    private void Shoot(Vector3 requestedDirection)
+    {
+        Vector3 shotDirection = GetShotDirection(requestedDirection);
+        if (shotDirection.sqrMagnitude <= MinMoveSqrMagnitude)
+        {
+            return;
+        }
+
+        shotDirection.Normalize();
+        normalAttack.Direction = shotDirection;
+
+        firePoint.position = transform.position + shotDirection * firePointDistance;
+        GameObject projectileObject = Instantiate(projectilePrefab, firePoint.position, Quaternion.identity);
+        projectileObject.tag = normalAttack.TagProjectile;
+
+        if (projectileObject.TryGetComponent(out Rigidbody projectileRigidbody))
+        {
+            projectileRigidbody.linearVelocity = shotDirection * normalAttack.SpeedOfAttack;
+        }
+        else
+        {
+            Debug.LogError("Projectile prefab is missing a Rigidbody.", projectileObject);
+        }
+
+        if (projectileObject.TryGetComponent(out ProjectileBehaviour projectile))
+        {
+            projectile.Configure(normalAttack);
+        }
+        else
+        {
+            Debug.LogError("Projectile prefab is missing ProjectileBehaviour.", projectileObject);
+        }
+
+        playerRigidbody.MoveRotation(Quaternion.LookRotation(shotDirection));
+    }
+
+    private Vector3 GetShotDirection(Vector3 requestedDirection)
+    {
+        if (requestedDirection.sqrMagnitude >= noAimZoneRadius * noAimZoneRadius)
+        {
+            return requestedDirection;
+        }
+
+        float aimAngle = Mathf.PI * playerRigidbody.rotation.eulerAngles.y / 180f;
+        Vector3 forwardDirection = new Vector3(Mathf.Sin(aimAngle), 0f, Mathf.Cos(aimAngle));
+        return AimAutomaticallyAtEnemy(forwardDirection);
+    }
+
+    private Vector3 AimAutomaticallyAtEnemy(Vector3 fallbackDirection)
+    {
+        float range = normalAttack.Range + orbitRadius;
+        float closestSqrDistance = range * range;
+        int hitCount = Physics.OverlapSphereNonAlloc(transform.position, range, autoAimHits, enemyLayerMask);
+        Vector3 bestDirection = fallbackDirection;
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            Vector3 enemyDirection = autoAimHits[i].transform.position - transform.position;
+            float sqrDistance = enemyDirection.sqrMagnitude;
+            if (sqrDistance < closestSqrDistance)
+            {
+                closestSqrDistance = sqrDistance;
+                bestDirection = enemyDirection;
+            }
+        }
+
+        return bestDirection;
+    }
+
+    private void TakeDamage(float amount)
+    {
+        if (isDead || IsRespawning)
+        {
+            return;
+        }
+
+        currentHealth = Mathf.Max(0f, currentHealth - amount);
+        healthSlider.value = currentHealth;
+        damagedThisFrame = currentHealth > 0f;
+
+        if (currentHealth <= 0f)
+        {
+            Die();
+        }
+    }
+
+    private void Die()
+    {
+        if (isDead)
+        {
+            return;
+        }
+
+        isDead = true;
+        if (GameController.Instance)
+        {
+            GameController.Instance.RespawnPlayer(this);
+        }
+        else
+        {
+            Debug.LogError($"{nameof(PlayerController)} cannot respawn because no {nameof(GameController)} exists.", this);
+        }
+    }
+
+    private void ResetHealth()
+    {
+        currentHealth = startingHealth;
+        healthSlider.maxValue = startingHealth;
+        healthSlider.value = startingHealth;
+        isDead = false;
+    }
+
+    private void UpdateAttachedHud()
+    {
+        attackHudBody.position = transform.position + attackHudOffset;
+        hudCanvas.position = transform.position + hudOffset;
+        hudCanvas.rotation = Quaternion.LookRotation(new Vector3(0f, -90f, 0f));
+    }
+
+    private void UpdateAimHud()
+    {
+        if (rightJoystickActive)
+        {
+            float zAimRotation = Mathf.Atan2(rightJoystick.Horizontal, rightJoystick.Vertical) * Mathf.Rad2Deg;
+            float zAimPosition = attackHudAim.localScale.y / 2f + orbitRadius;
+            Vector3 aimDirection = new Vector3(rightJoystick.Horizontal, rightJoystick.Vertical, 0f);
+
+            attackHudAim.localScale = new Vector3(
+                attackHudAim.localScale.x,
+                Mathf.Lerp(attackHudAim.localScale.y, aimMaxScale, aimScaleSpeed * Time.deltaTime),
+                attackHudAim.localScale.z);
+
+            if (aimDirection.sqrMagnitude > MinMoveSqrMagnitude)
+            {
+                aimDirection.Normalize();
+                attackHudAim.localPosition = aimDirection * zAimPosition;
+            }
+
+            attackHudBody.MoveRotation(Quaternion.Euler(90f, zAimRotation, 0f));
+        }
+        else if (attackHudAim.localScale != aimStartingScale)
+        {
+            attackHudAim.localScale = aimStartingScale;
+            attackHudAim.position = attackHudBody.position;
+        }
+    }
+
+    private void UpdateDamageFlash()
+    {
+        if (damagedThisFrame)
+        {
+            damageImage.color = flashColour;
+            damagedThisFrame = false;
+            return;
+        }
+
+        damageImage.color = Color.Lerp(damageImage.color, Color.clear, flashSpeed * Time.deltaTime);
+    }
+
+    private void ClearDamageFlash()
+    {
+        damageImage.color = Color.clear;
     }
 }

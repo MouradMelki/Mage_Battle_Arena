@@ -1,68 +1,50 @@
-﻿using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using Utils;
 
 public class FloatingJoystick : Joystick
 {
-    private int m_noAimZoneCount;
+    private const string LeftJoystickTag = "Left_Joystick";
+    private const string RightJoystickTag = "Right_Joystick";
+
+    private int noAimZoneCount;
+    private Vector2 joystickCenter = Vector2.zero;
+    private RectTransform rectTransform;
+    private bool isLeftJoystick;
+    private bool isRightJoystick;
 
     public PlayerController PlayerController { get; set; }
-    public float NoAimZoneRadius { get; set; }
-    public float FireRate { get; set; }
-    private float nextFire;
-
-    Vector2 joystickCenter = Vector2.zero;
-    RectTransform rectTransform;
 
     private void Awake()
     {
         background.gameObject.SetActive(false);
-        rectTransform = gameObject.GetComponent<RectTransform>();
+        rectTransform = GetComponent<RectTransform>();
         Controlls.SetSize(rectTransform, new Vector2(Screen.width / 2, Screen.height));
 
-        if (gameObject.CompareTag("Left_Joystick"))
-            Controlls.SetPositionOfPivot(rectTransform, new Vector2(- Screen.width / 2, - Screen.height / 2));
-        else if(gameObject.CompareTag("Right_Joystick"))
-            Controlls.SetPositionOfPivot(rectTransform, new Vector2(Screen.width / 2, - Screen.height / 2));
+        isLeftJoystick = CompareTag(LeftJoystickTag);
+        isRightJoystick = CompareTag(RightJoystickTag);
+
+        if (isLeftJoystick)
+        {
+            Controlls.SetPositionOfPivot(rectTransform, new Vector2(-Screen.width / 2, -Screen.height / 2));
+        }
+        else if (isRightJoystick)
+        {
+            Controlls.SetPositionOfPivot(rectTransform, new Vector2(Screen.width / 2, -Screen.height / 2));
+        }
     }
 
     public override void OnDrag(PointerEventData eventData)
     {
-        if (PlayerController != null)
-        {
-            // in the future change PlayerController component into main component of player
-            if (gameObject.CompareTag("Right_Joystick") && !PlayerController.Player.IsDead)
-            {
-                Vector3 movement = new Vector3(Horizontal, 0f, Vertical);
-                if (movement.magnitude > NoAimZoneRadius)
-                {
-                    PlayerController.Player.RJoyStickAct = true;
-                }
-                else if (movement.magnitude <= NoAimZoneRadius)
-                {
-                    if (m_noAimZoneCount == 0)
-                        m_noAimZoneCount++;
-
-                    if (PlayerController.Player.RJoyStickAct && m_noAimZoneCount != 0)
-                    {
-                        Vibration.Vibrate(50);
-                    }
-
-                    PlayerController.Player.RJoyStickAct = false;
-                }
-            }
-
-            if (gameObject.CompareTag("Left_Joystick") && !PlayerController.Player.IsDead)
-            {
-                PlayerController.Player.LJoyStickAct = Math.Abs(Horizontal) > 0f || Math.Abs(Vertical) > 0f;
-            }
-        }
-
         Vector2 direction = eventData.position - joystickCenter;
-        inputVector = (direction.magnitude > background.sizeDelta.x / 2f) ? direction.normalized : direction / (background.sizeDelta.x / 2f);
+        inputVector = direction.magnitude > background.sizeDelta.x / 2f
+            ? direction.normalized
+            : direction / (background.sizeDelta.x / 2f);
+
         ClampJoystick();
-        handle.anchoredPosition = (inputVector * background.sizeDelta.x / 2f) * handleLimit;
+        handle.anchoredPosition = inputVector * background.sizeDelta.x / 2f * handleLimit;
+
+        UpdatePlayerInputState();
     }
 
     public override void OnPointerDown(PointerEventData eventData)
@@ -77,30 +59,57 @@ public class FloatingJoystick : Joystick
     {
         if (PlayerController != null)
         {
-            if (gameObject.CompareTag("Right_Joystick") && !PlayerController.Player.IsDead)
+            if (isRightJoystick && !PlayerController.IsDead)
             {
                 Vector3 movement = new Vector3(Horizontal, 0f, Vertical);
-                if (m_noAimZoneCount == 0 || movement.magnitude > NoAimZoneRadius)
+                float noAimZoneSqr = PlayerController.NoAimZoneRadius * PlayerController.NoAimZoneRadius;
+                if (noAimZoneCount == 0 || movement.sqrMagnitude > noAimZoneSqr)
                 {
-                    if (Time.time > nextFire && PlayerController.shoot == false)
-                    {
-                        nextFire = Time.time + FireRate;
-                        PlayerController.Player.NormalAttack.Direction = movement;
-                        PlayerController.shoot = true;
-                    }
-                    m_noAimZoneCount = 0;
+                    PlayerController.QueueShot(movement);
                 }
-                else
-                {
-                    m_noAimZoneCount = 0;
-                }
-                PlayerController.Player.RJoyStickAct = false;
+
+                noAimZoneCount = 0;
+                PlayerController.SetRightJoystickActive(false);
             }
 
-            PlayerController.Player.LJoyStickAct &= !gameObject.CompareTag("Left_Joystick");
+            if (isLeftJoystick)
+            {
+                PlayerController.SetLeftJoystickActive(false);
+            }
         }
 
         background.gameObject.SetActive(false);
         inputVector = Vector2.zero;
+    }
+
+    private void UpdatePlayerInputState()
+    {
+        if (PlayerController == null || PlayerController.IsDead)
+        {
+            return;
+        }
+
+        if (isRightJoystick)
+        {
+            Vector3 movement = new Vector3(Horizontal, 0f, Vertical);
+            float noAimZoneSqr = PlayerController.NoAimZoneRadius * PlayerController.NoAimZoneRadius;
+            bool aiming = movement.sqrMagnitude > noAimZoneSqr;
+            if (!aiming && noAimZoneCount == 0)
+            {
+                noAimZoneCount++;
+            }
+
+            if (!aiming && noAimZoneCount != 0)
+            {
+                Vibration.Vibrate(50);
+            }
+
+            PlayerController.SetRightJoystickActive(aiming);
+        }
+
+        if (isLeftJoystick)
+        {
+            PlayerController.SetLeftJoystickActive(Horizontal != 0f || Vertical != 0f);
+        }
     }
 }

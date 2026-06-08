@@ -1,114 +1,280 @@
-﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.AI;
-using System.Diagnostics.Contracts;
+using UnityEngine.Serialization;
+using UnityEngine.UI;
 
 public class EnemyController : MonoBehaviour
 {
-    public GameObject m_projectile;
-    public Transform m_firePoint;
-    public Transform m_Canvas_HUD;
-    public Slider healthSlider;
-    public EnemyBot EnemyBot { get; set; }
-    public Transform RespawnPos;
-    public bool IsRespawning { get; set; }
-
-    private Vector3 m_offset_hud;
-    private float nextFire;
-    private bool shoot = false;
-    protected readonly GameObject projectil;
     private const string FriendlyFireTag = "FriendlyFire";
     private const string EnemyFireTag = "EnemyFire";
-    private const string PlayerTag = "Player";
+    private const float PathRefreshInterval = 0.15f;
+    private const float MinAimSqrMagnitude = 0.0001f;
+
+    [Header("Combat")]
+    [SerializeField, FormerlySerializedAs("m_projectile")]
+    private GameObject projectilePrefab;
+    [SerializeField, FormerlySerializedAs("m_firePoint")]
+    private Transform firePoint;
+    [SerializeField]
+    private float fireRate = 1f;
+    [SerializeField]
+    private float firePointDistance = 1.15f;
+    [SerializeField]
+    private float orbitRadius = 1f;
+    [SerializeField]
+    private float projectileSpeed = 6f;
+    [SerializeField]
+    private float projectileDamage = 20f;
+    [SerializeField]
+    private float projectileRange = 8f;
+
+    [Header("Health")]
+    [SerializeField]
+    private float startingHealth = 100f;
+    [SerializeField]
+    private Slider healthSlider;
+
+    [Header("Scene References")]
+    [SerializeField, FormerlySerializedAs("m_Canvas_HUD")]
+    private Transform hudCanvas;
+    [SerializeField, FormerlySerializedAs("RespawnPos")]
+    private Transform respawnPoint;
+    [SerializeField]
+    private Transform playerTarget;
+
+    private Rigidbody enemyRigidbody;
+    private NavMeshAgent navMeshAgent;
+    private NormalAttack normalAttack;
+    private Vector3 hudOffset;
+    private float currentHealth;
+    private float nextFireTime;
+    private float nextPathRefreshTime;
+    private bool isDead;
+
+    public bool IsDead => isDead;
+    public bool IsRespawning { get; private set; }
+    public Transform RespawnPoint => respawnPoint;
 
     private void Awake()
     {
-        if (!m_Canvas_HUD || !m_projectile || !m_firePoint || !healthSlider || !RespawnPos)
+        enemyRigidbody = GetComponent<Rigidbody>();
+        navMeshAgent = GetComponent<NavMeshAgent>();
+
+        if (!ValidateReferences())
         {
-            Debug.LogError("EnemyController is missing one or more required scene references.", this);
             enabled = false;
             return;
         }
 
-        m_offset_hud = m_Canvas_HUD.position - transform.position;
-
-        EnemyBot = new EnemyBot()
+        normalAttack = new NormalAttack
         {
-            FireRate = 1f,
-            Projectile = m_projectile,
-            EnemyTransform = transform,
-            FirePoint = m_firePoint,
-            FirePointDistance = 1.15f,
-            OrbitRadius = 1f,
-            Player = GameObject.FindGameObjectWithTag(PlayerTag),
-            Nav = GetComponent<NavMeshAgent>(),
-            HealthSlider = healthSlider,
-            CurrentHealth = 100f,
-            StartingHealth = 100f,
-            EnemyRigidbody = GetComponent<Rigidbody>(),
-            IsDead = false,
-            NormalAttack = new NormalAttack
-            {
-                SpeedOfAttack = 6f,
-                Damage = 20f,
-                Range = 8f,
-                TagProjectile = EnemyFireTag
-            }
+            FireRate = fireRate,
+            FirePointDistance = firePointDistance,
+            SpeedOfAttack = projectileSpeed,
+            Damage = projectileDamage,
+            Range = projectileRange,
+            TagProjectile = EnemyFireTag
         };
 
-        if (!EnemyBot.Nav)
-        {
-            Debug.LogError("EnemyController requires a NavMeshAgent component.", this);
-            enabled = false;
-        }
+        hudOffset = hudCanvas.position - transform.position;
+        ResetHealth();
     }
 
-    void Update()
+    private void Update()
     {
-        // Fire Rate Control
-        if (Time.time > nextFire && shoot == false)
+        UpdateHud();
+
+        if (isDead || IsRespawning)
         {
-            nextFire = Time.time + EnemyBot.FireRate;
-            shoot = true;
+            return;
         }
 
-        if (shoot)
-        {
-            EnemyBot.Shoot();
-            shoot = false;
-        }
-
-        m_Canvas_HUD.rotation = Quaternion.LookRotation(Vector3.down);
-        m_Canvas_HUD.position = transform.position + m_offset_hud;
-
-        if (EnemyBot.IsDead && !IsRespawning)
-        {
-            if (GameController.gameController)
-            {
-                GameController.gameController.RespawnPlayer(this);
-            }
-            else
-            {
-                Debug.LogError("EnemyController cannot respawn because no GameController is available.", this);
-            }
-        }
-    }
-
-    private void FixedUpdate()
-    {
-        if (!IsRespawning)
-        {
-            EnemyBot.MovementControl();
-        }
+        UpdateDestination();
+        TryShootAtPlayer();
     }
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (collision.gameObject.CompareTag(FriendlyFireTag))
+        if (!collision.gameObject.CompareTag(FriendlyFireTag))
         {
-            EnemyBot.TakeDamage(collision.gameObject.GetComponent<ProjectileBehaviour>().NormalAttack.Damage);
+            return;
         }
+
+        if (collision.gameObject.TryGetComponent(out ProjectileBehaviour projectile))
+        {
+            TakeDamage(projectile.Damage);
+        }
+        else
+        {
+            Debug.LogError("Friendly projectile is missing ProjectileBehaviour.", collision.gameObject);
+        }
+    }
+
+    public void BeginRespawn()
+    {
+        IsRespawning = true;
+        if (navMeshAgent)
+        {
+            navMeshAgent.enabled = false;
+        }
+    }
+
+    public void CompleteRespawn()
+    {
+        transform.position = respawnPoint.position;
+        transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+        ResetHealth();
+        IsRespawning = false;
+
+        if (navMeshAgent)
+        {
+            navMeshAgent.enabled = true;
+            navMeshAgent.Warp(transform.position);
+        }
+    }
+
+    private bool ValidateReferences()
+    {
+        bool valid = true;
+
+        valid &= LogMissing(enemyRigidbody, "Rigidbody");
+        valid &= LogMissing(navMeshAgent, "NavMeshAgent");
+        valid &= LogMissing(projectilePrefab, nameof(projectilePrefab));
+        valid &= LogMissing(firePoint, nameof(firePoint));
+        valid &= LogMissing(healthSlider, nameof(healthSlider));
+        valid &= LogMissing(hudCanvas, nameof(hudCanvas));
+        valid &= LogMissing(respawnPoint, nameof(respawnPoint));
+        valid &= LogMissing(playerTarget, nameof(playerTarget));
+
+        return valid;
+    }
+
+    private bool LogMissing(Object reference, string referenceName)
+    {
+        if (reference)
+        {
+            return true;
+        }
+
+        Debug.LogError($"{nameof(EnemyController)} on {name} is missing required reference: {referenceName}.", this);
+        return false;
+    }
+
+    private void UpdateHud()
+    {
+        hudCanvas.rotation = Quaternion.LookRotation(Vector3.down);
+        hudCanvas.position = transform.position + hudOffset;
+    }
+
+    private void UpdateDestination()
+    {
+        if (Time.time < nextPathRefreshTime || !navMeshAgent.enabled)
+        {
+            return;
+        }
+
+        navMeshAgent.SetDestination(playerTarget.position);
+        nextPathRefreshTime = Time.time + PathRefreshInterval;
+    }
+
+    private void TryShootAtPlayer()
+    {
+        if (Time.time < nextFireTime)
+        {
+            return;
+        }
+
+        Vector3 directionToPlayer = playerTarget.position - transform.position;
+        float range = normalAttack.Range + orbitRadius;
+        float rangeSqr = range * range;
+        if (directionToPlayer.sqrMagnitude > rangeSqr)
+        {
+            return;
+        }
+
+        Shoot(directionToPlayer);
+        nextFireTime = Time.time + normalAttack.FireRate;
+    }
+
+    private void Shoot(Vector3 direction)
+    {
+        if (direction.sqrMagnitude <= MinAimSqrMagnitude)
+        {
+            return;
+        }
+
+        direction.Normalize();
+        normalAttack.Direction = direction;
+        firePoint.position = transform.position + direction * normalAttack.FirePointDistance;
+
+        GameObject projectileObject = Instantiate(projectilePrefab, firePoint.position, Quaternion.identity);
+        projectileObject.tag = normalAttack.TagProjectile;
+
+        if (projectileObject.TryGetComponent(out Rigidbody projectileRigidbody))
+        {
+            projectileRigidbody.linearVelocity = direction * normalAttack.SpeedOfAttack;
+        }
+        else
+        {
+            Debug.LogError("Projectile prefab is missing a Rigidbody.", projectileObject);
+        }
+
+        if (projectileObject.TryGetComponent(out ProjectileBehaviour projectile))
+        {
+            projectile.Configure(normalAttack);
+        }
+        else
+        {
+            Debug.LogError("Projectile prefab is missing ProjectileBehaviour.", projectileObject);
+        }
+
+        enemyRigidbody.MoveRotation(Quaternion.LookRotation(direction));
+    }
+
+    private void TakeDamage(float amount)
+    {
+        if (isDead || IsRespawning)
+        {
+            return;
+        }
+
+        currentHealth = Mathf.Max(0f, currentHealth - amount);
+        healthSlider.value = currentHealth;
+
+        if (currentHealth <= 0f)
+        {
+            Die();
+        }
+    }
+
+    private void Die()
+    {
+        if (isDead)
+        {
+            return;
+        }
+
+        isDead = true;
+        if (navMeshAgent)
+        {
+            navMeshAgent.enabled = false;
+        }
+
+        if (GameController.Instance)
+        {
+            GameController.Instance.RespawnEnemy(this);
+        }
+        else
+        {
+            Debug.LogError($"{nameof(EnemyController)} cannot respawn because no {nameof(GameController)} exists.", this);
+        }
+    }
+
+    private void ResetHealth()
+    {
+        currentHealth = startingHealth;
+        healthSlider.maxValue = startingHealth;
+        healthSlider.value = startingHealth;
+        isDead = false;
     }
 }
