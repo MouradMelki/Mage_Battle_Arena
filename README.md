@@ -1,59 +1,64 @@
 # Mage Battle Arena
 
-Mage Battle Arena is an older Unity 3D arena battle prototype. The project currently contains player movement, mobile joystick controls, aiming, projectile combat, enemy NavMeshAgent movement, health/damage, respawn logic, timer UI, and the main arena scene.
+Mage Battle Arena is a small Unity 3D arena battle prototype with mobile joystick movement, aiming, projectile combat, enemy NavMeshAgent movement, health/damage, respawn logic, timer UI, and a basic arena scene.
 
-## Unity Versions
+## Unity Version
 
+- Target Unity version: Unity 6000.4.10f1 / Unity 6.4.
 - Original project version: Unity 2019.1.8f1.
-- Local modern target version: Unity 6000.4.10f1, found in Unity Hub at `C:\Program Files\Unity\Hub\Editor\6000.4.10f1`.
-- `ProjectSettings/ProjectVersion.txt` is intentionally left at 2019.1.8f1 until the project is opened and migrated by Unity. Let Unity write the serialization and settings upgrade in the Editor so scene, prefab, and package migrations are visible as a separate reviewable change.
+- The project has been opened and confirmed working on Unity 6.4, so the codebase now targets Unity 6.4 only. No Unity 2019 compatibility paths are kept.
 
-## Upgrade Preparation Completed
+## Current Status
 
-- Added a Unity `.gitignore` so generated folders and IDE files are ignored.
-- Preserved `Assets/`, `Packages/`, `ProjectSettings/`, scenes, prefabs, and `.meta` files.
-- Confirmed `Assets/Scenes/SampleScene.unity` remains the enabled build scene.
-- Refactored observer classes so `Observer` no longer inherits from `MonoBehaviour` while still preserving the existing damage flash and timer observer flow.
-- Refactored the plain gameplay data/logic classes `Player`, `EnemyBot`, and `NormalAttack` so they are no longer constructed as `MonoBehaviour` instances.
-- Added respawn guards to player and enemy controllers so each death starts only one respawn coroutine.
-- Preserved respawn behavior: deactivate object, wait, reset position, health, rotation, and reactivate object.
-- Re-enabled the enemy `NavMeshAgent` after respawn.
-- Reset `Time.timeScale` when the `GameController` wakes up so previous play sessions do not leave the project paused.
-- Updated timer logic to use match elapsed time and show the existing `TimeUpPannel` object if it is present in the scene.
-- Added defensive null checks and clearer error messages for key scene references.
+- Main test scene: `Assets/Scenes/SampleScene.unity`.
+- Main gameplay loop: player and enemy can move, aim, shoot, take damage, die, respawn, and reach the timer end state.
+- Input remains based on the bundled Virtual Joystick Pack and the legacy Input Manager.
+- UI remains based on Unity UI `Text`, `Image`, and `Slider` components.
+
+## Cleanup Pass Completed
+
+- Removed the old observer layer and moved damage flash / timer updates into direct runtime flows.
+- Removed the old `Player` and `EnemyBot` wrapper classes that held scene objects as plain C# state.
+- Kept `NormalAttack` as a compact projectile attack data object.
+- Refactored `PlayerController` around explicit serialized references, cached Rigidbody/joystick/UI references, direct health handling, direct damage flash updates, queued shooting, and single-shot respawn requests.
+- Refactored `EnemyController` around explicit serialized references, cached Rigidbody/NavMeshAgent references, throttled path updates, direct health handling, direct projectile shooting, and single-shot respawn requests.
+- Refactored `GameController` to use a clearer `Instance` singleton, direct match timer logic, cached respawn delay, and separate player/enemy respawn methods.
+- Refactored `ProjectileBehaviour` so projectiles are configured with damage/range at spawn time and use squared distance checks for range cleanup.
+- Updated the floating joystick bridge so it no longer reaches through controller internals or toggles public shoot flags.
+- Wired `SampleScene` references for the player joysticks, enemy target, timer text, and match-end panel.
 
 ## How To Open
 
 1. Open Unity Hub.
-2. Add this project folder if it is not already listed.
-3. Open it first with Unity 6000.4.10f1.
-4. Let Unity import and upgrade assets, packages, scenes, prefabs, and settings.
-5. Save the project from Unity after confirming the scene opens cleanly.
+2. Open this project with Unity 6000.4.10f1.
+3. Open `Assets/Scenes/SampleScene.unity`.
+4. Let Unity finish importing and compiling scripts.
 
 ## How To Test SampleScene
 
-1. Open `Assets/Scenes/SampleScene.unity`.
-2. Confirm the scene contains a `GameController`, Player, Enemy, left and right joystick UI, `DamageImage`, `TimerText`, and `TimeUpPannel`.
-3. Press Play.
-4. Verify the player can move with the left joystick and aim/shoot with the right joystick.
-5. Verify enemy movement still uses the baked NavMesh and follows the player.
-6. Verify player damage flashes the damage image.
-7. Verify player and enemy deaths trigger only one respawn each.
-8. Verify the timer reaches `01:00`, shows `TimeUpPannel`, and pauses the match.
-9. Stop Play Mode, then press Play again and confirm time is no longer stuck at `0`.
+1. Press Play in `Assets/Scenes/SampleScene.unity`.
+2. Move the player with the left joystick.
+3. Aim and shoot with the right joystick.
+4. Confirm the enemy follows the player using the baked NavMesh.
+5. Confirm player and enemy projectiles apply damage.
+6. Confirm health sliders update.
+7. Confirm player damage flashes the damage image.
+8. Confirm player and enemy death each trigger one respawn.
+9. Confirm the timer reaches `01:00`, shows `TimeUpPannel`, and pauses the match.
+10. Stop Play Mode and press Play again to confirm `Time.timeScale` resets.
 
-## Known Upgrade Risks
+## Known Remaining Issues
 
-- The project uses legacy Unity UI `Text` and `Image` components. They should still work, but TextMeshPro migration can be considered later.
-- Input is based on the legacy Input Manager and the bundled Virtual Joystick Pack. Keep old Input Manager support enabled when opening in a modern Unity version.
-- The enemy relies on a baked NavMesh asset at `Assets/Scenes/SampleScene/NavMesh.asset`. Re-bake the NavMesh in Unity 6000 if the enemy cannot navigate.
-- `Packages/manifest.json` contains old packages such as Ads 2.0.8, Analytics 3.3.2, Purchasing 2.0.6, Multiplayer HLAPI 1.0.2, Package Manager UI 2.1.2, Timeline 1.0.0, and XR Legacy Input Helpers 2.0.2. Gameplay scripts do not reference these packages directly. If Unity 6000 reports package resolution errors, remove or upgrade unused service packages through Package Manager as a separate reviewable change.
-- Scene and prefab serialization has not been force-upgraded outside Unity. Unity should perform that migration on first open.
+- The project still uses legacy Unity UI `Text` instead of TextMeshPro.
+- The project still uses the legacy Input Manager and bundled joystick package.
+- There are old generated Unity files and package-cache changes in the working tree from prior imports; they should be reviewed separately from gameplay code.
+- The baked NavMesh should be rechecked after major arena or Unity lighting/navigation changes.
+- There are no automated PlayMode tests yet for movement, shooting, respawn, or timer behavior.
 
 ## Recommended Next Tasks
 
-- Open the project in Unity 6000.4.10f1 and commit Unity-generated scene, prefab, package lock, and project setting migrations separately.
-- Remove unused packages after Unity Package Manager confirms they are not required.
-- Add PlayMode tests for respawn and timer behavior.
-- Consider moving gameplay model classes into a clearer non-MonoBehaviour folder after the upgrade is stable.
-- Review mobile build settings and Android player settings after Unity upgrades the project.
+- Run a full Unity Editor compile and playthrough on `SampleScene`.
+- Add PlayMode tests for health, projectile damage, respawn, and timer pause behavior.
+- Move tuning values into ScriptableObjects once the gameplay loop stabilizes.
+- Consider replacing legacy UI `Text` with TextMeshPro.
+- Review and remove unused packages through Unity Package Manager.
