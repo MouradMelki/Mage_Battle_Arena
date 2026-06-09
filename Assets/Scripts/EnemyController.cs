@@ -18,6 +18,7 @@ public class EnemyController : MonoBehaviour
     private const string EnemyFireTag = "EnemyFire";
     private const float PathRefreshInterval = 0.15f;
     private const float MinAimSqrMagnitude = 0.0001f;
+    private const float TelegraphPulseSpeed = 8f;
 
     [Header("Combat")]
     [SerializeField, FormerlySerializedAs("m_projectile")]
@@ -42,6 +43,8 @@ public class EnemyController : MonoBehaviour
     private float attackRecoveryDuration = 0.35f;
     [SerializeField]
     private float rotationSpeed = 540f;
+    [SerializeField]
+    private Color attackTelegraphColor = new Color(1f, 0.35f, 0f, 1f);
 
     [Header("Health")]
     [SerializeField]
@@ -59,8 +62,10 @@ public class EnemyController : MonoBehaviour
 
     private Rigidbody enemyRigidbody;
     private NavMeshAgent navMeshAgent;
+    private Renderer enemyRenderer;
     private NormalAttack normalAttack;
     private Vector3 hudOffset;
+    private Color startingColor;
     private float currentHealth;
     private float nextFireTime;
     private float nextPathRefreshTime;
@@ -76,6 +81,7 @@ public class EnemyController : MonoBehaviour
     {
         enemyRigidbody = GetComponent<Rigidbody>();
         navMeshAgent = GetComponent<NavMeshAgent>();
+        enemyRenderer = GetComponentInChildren<Renderer>();
 
         if (!ValidateReferences())
         {
@@ -97,6 +103,11 @@ public class EnemyController : MonoBehaviour
         };
 
         hudOffset = hudCanvas.position - transform.position;
+        if (enemyRenderer)
+        {
+            startingColor = enemyRenderer.material.color;
+        }
+
         ResetHealth();
     }
 
@@ -108,6 +119,8 @@ public class EnemyController : MonoBehaviour
         {
             return;
         }
+
+        UpdateTelegraph();
 
         switch (state)
         {
@@ -124,6 +137,7 @@ public class EnemyController : MonoBehaviour
                     ShootIfPlayerIsInRange();
                     nextFireTime = Time.time + normalAttack.FireRate;
                     state = EnemyState.Recover;
+                    ResetTelegraph();
                     stateEndTime = Time.time + attackRecoveryDuration;
                 }
                 break;
@@ -159,6 +173,7 @@ public class EnemyController : MonoBehaviour
     {
         IsRespawning = true;
         state = EnemyState.Respawning;
+        ResetTelegraph();
         if (navMeshAgent)
         {
             navMeshAgent.enabled = false;
@@ -172,6 +187,7 @@ public class EnemyController : MonoBehaviour
         ResetHealth();
         IsRespawning = false;
         state = EnemyState.Chase;
+        ResetTelegraph();
 
         if (navMeshAgent)
         {
@@ -242,6 +258,26 @@ public class EnemyController : MonoBehaviour
         stateEndTime = Time.time + attackWindupDuration;
         HoldPosition();
         FaceDirection(directionToPlayer);
+    }
+
+    private void UpdateTelegraph()
+    {
+        if (!enemyRenderer || state != EnemyState.Windup)
+        {
+            ResetTelegraph();
+            return;
+        }
+
+        float pulse = Mathf.PingPong(Time.time * TelegraphPulseSpeed, 1f);
+        enemyRenderer.material.color = Color.Lerp(startingColor, attackTelegraphColor, pulse);
+    }
+
+    private void ResetTelegraph()
+    {
+        if (enemyRenderer)
+        {
+            enemyRenderer.material.color = startingColor;
+        }
     }
 
     private bool IsPlayerInAttackRange(out Vector3 directionToPlayer)
@@ -350,6 +386,7 @@ public class EnemyController : MonoBehaviour
 
         isDead = true;
         state = EnemyState.Dead;
+        ResetTelegraph();
         if (navMeshAgent)
         {
             navMeshAgent.enabled = false;
