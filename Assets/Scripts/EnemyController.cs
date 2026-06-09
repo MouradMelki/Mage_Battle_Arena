@@ -5,6 +5,15 @@ using UnityEngine.UI;
 
 public class EnemyController : MonoBehaviour
 {
+    private enum EnemyState
+    {
+        Chase,
+        Windup,
+        Recover,
+        Dead,
+        Respawning
+    }
+
     private const string FriendlyFireTag = "FriendlyFire";
     private const string EnemyFireTag = "EnemyFire";
     private const float PathRefreshInterval = 0.15f;
@@ -27,6 +36,12 @@ public class EnemyController : MonoBehaviour
     private float projectileDamage = 20f;
     [SerializeField]
     private float projectileRange = 8f;
+    [SerializeField]
+    private float attackWindupDuration = 0.35f;
+    [SerializeField]
+    private float attackRecoveryDuration = 0.35f;
+    [SerializeField]
+    private float rotationSpeed = 540f;
 
     [Header("Health")]
     [SerializeField]
@@ -49,7 +64,9 @@ public class EnemyController : MonoBehaviour
     private float currentHealth;
     private float nextFireTime;
     private float nextPathRefreshTime;
+    private float stateEndTime;
     private bool isDead;
+    private EnemyState state = EnemyState.Chase;
 
     public bool IsDead => isDead;
     public bool IsRespawning { get; private set; }
@@ -65,6 +82,9 @@ public class EnemyController : MonoBehaviour
             enabled = false;
             return;
         }
+
+        enemyRigidbody.isKinematic = true;
+        navMeshAgent.updateRotation = false;
 
         normalAttack = new NormalAttack
         {
@@ -89,8 +109,33 @@ public class EnemyController : MonoBehaviour
             return;
         }
 
-        UpdateDestination();
-        TryShootAtPlayer();
+        switch (state)
+        {
+            case EnemyState.Chase:
+                UpdateDestination();
+                FacePlayer();
+                TryStartAttack();
+                break;
+            case EnemyState.Windup:
+                HoldPosition();
+                FacePlayer();
+                if (Time.time >= stateEndTime)
+                {
+                    ShootIfPlayerIsInRange();
+                    nextFireTime = Time.time + normalAttack.FireRate;
+                    state = EnemyState.Recover;
+                    stateEndTime = Time.time + attackRecoveryDuration;
+                }
+                break;
+            case EnemyState.Recover:
+                HoldPosition();
+                FacePlayer();
+                if (Time.time >= stateEndTime)
+                {
+                    state = EnemyState.Chase;
+                }
+                break;
+        }
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -113,6 +158,7 @@ public class EnemyController : MonoBehaviour
     public void BeginRespawn()
     {
         IsRespawning = true;
+        state = EnemyState.Respawning;
         if (navMeshAgent)
         {
             navMeshAgent.enabled = false;
@@ -125,6 +171,7 @@ public class EnemyController : MonoBehaviour
         transform.rotation = Quaternion.Euler(0f, 180f, 0f);
         ResetHealth();
         IsRespawning = false;
+        state = EnemyState.Chase;
 
         if (navMeshAgent)
         {
@@ -168,32 +215,79 @@ public class EnemyController : MonoBehaviour
 
     private void UpdateDestination()
     {
+        if (IsPlayerInAttackRange(out _))
+        {
+            HoldPosition();
+            return;
+        }
+
         if (Time.time < nextPathRefreshTime || !navMeshAgent.enabled)
         {
             return;
         }
 
+        navMeshAgent.isStopped = false;
         navMeshAgent.SetDestination(playerTarget.position);
         nextPathRefreshTime = Time.time + PathRefreshInterval;
     }
 
-    private void TryShootAtPlayer()
+    private void TryStartAttack()
     {
-        if (Time.time < nextFireTime)
+        if (Time.time < nextFireTime || !IsPlayerInAttackRange(out Vector3 directionToPlayer))
         {
             return;
         }
 
-        Vector3 directionToPlayer = playerTarget.position - transform.position;
+        state = EnemyState.Windup;
+        stateEndTime = Time.time + attackWindupDuration;
+        HoldPosition();
+        FaceDirection(directionToPlayer);
+    }
+
+    private bool IsPlayerInAttackRange(out Vector3 directionToPlayer)
+    {
+        directionToPlayer = playerTarget.position - transform.position;
         float range = normalAttack.Range + orbitRadius;
-        float rangeSqr = range * range;
-        if (directionToPlayer.sqrMagnitude > rangeSqr)
+        return directionToPlayer.sqrMagnitude <= range * range;
+    }
+
+    private void ShootIfPlayerIsInRange()
+    {
+        if (!IsPlayerInAttackRange(out Vector3 directionToPlayer))
         {
             return;
         }
 
         Shoot(directionToPlayer);
-        nextFireTime = Time.time + normalAttack.FireRate;
+    }
+
+    private void HoldPosition()
+    {
+        if (navMeshAgent.enabled)
+        {
+            navMeshAgent.isStopped = true;
+            navMeshAgent.velocity = Vector3.zero;
+            navMeshAgent.nextPosition = transform.position;
+            navMeshAgent.ResetPath();
+        }
+    }
+
+    private void FacePlayer()
+    {
+        Vector3 directionToPlayer = playerTarget.position - transform.position;
+        FaceDirection(directionToPlayer);
+    }
+
+    private void FaceDirection(Vector3 direction)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= MinAimSqrMagnitude)
+        {
+            return;
+        }
+
+        Quaternion targetRotation = Quaternion.LookRotation(direction);
+        transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
     }
 
     private void Shoot(Vector3 direction)
@@ -228,7 +322,7 @@ public class EnemyController : MonoBehaviour
             Debug.LogError("Projectile prefab is missing ProjectileBehaviour.", projectileObject);
         }
 
-        enemyRigidbody.MoveRotation(Quaternion.LookRotation(direction));
+        FaceDirection(direction);
     }
 
     private void TakeDamage(float amount)
@@ -255,6 +349,7 @@ public class EnemyController : MonoBehaviour
         }
 
         isDead = true;
+        state = EnemyState.Dead;
         if (navMeshAgent)
         {
             navMeshAgent.enabled = false;
