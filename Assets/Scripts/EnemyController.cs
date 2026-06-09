@@ -32,6 +32,10 @@ public class EnemyController : MonoBehaviour
     [SerializeField]
     private float orbitRadius = 1f;
     [SerializeField]
+    private float idealAttackRange = 7.5f;
+    [SerializeField]
+    private float tooCloseRange = 4f;
+    [SerializeField]
     private float projectileSpeed = 6f;
     [SerializeField]
     private float projectileDamage = 20f;
@@ -91,6 +95,7 @@ public class EnemyController : MonoBehaviour
 
         enemyRigidbody.isKinematic = true;
         navMeshAgent.updateRotation = false;
+        navMeshAgent.stoppingDistance = 0f;
 
         normalAttack = new NormalAttack
         {
@@ -130,6 +135,11 @@ public class EnemyController : MonoBehaviour
                 TryStartAttack();
                 break;
             case EnemyState.Windup:
+                if (TryMoveAwayIfTooClose())
+                {
+                    break;
+                }
+
                 HoldPosition();
                 FacePlayer();
                 if (Time.time >= stateEndTime)
@@ -142,6 +152,11 @@ public class EnemyController : MonoBehaviour
                 }
                 break;
             case EnemyState.Recover:
+                if (TryMoveAwayIfTooClose())
+                {
+                    break;
+                }
+
                 HoldPosition();
                 FacePlayer();
                 if (Time.time >= stateEndTime)
@@ -231,25 +246,57 @@ public class EnemyController : MonoBehaviour
 
     private void UpdateDestination()
     {
-        if (IsPlayerInAttackRange(out _))
+        Vector3 directionToPlayer = playerTarget.position - transform.position;
+        directionToPlayer.y = 0f;
+        float distanceSqr = directionToPlayer.sqrMagnitude;
+
+        if (distanceSqr <= tooCloseRange * tooCloseRange)
+        {
+            MoveAwayFromPlayer(directionToPlayer, true);
+            return;
+        }
+
+        if (distanceSqr <= idealAttackRange * idealAttackRange)
         {
             HoldPosition();
             return;
         }
 
-        if (Time.time < nextPathRefreshTime || !navMeshAgent.enabled)
+        MoveTowardPlayer();
+    }
+
+    private void MoveTowardPlayer()
+    {
+        UpdateAgentDestination(playerTarget.position);
+    }
+
+    private void MoveAwayFromPlayer(Vector3 directionToPlayer, bool force = false)
+    {
+        Vector3 retreatDirection = -directionToPlayer;
+        if (retreatDirection.sqrMagnitude <= MinAimSqrMagnitude)
+        {
+            retreatDirection = -transform.forward;
+        }
+
+        Vector3 destination = playerTarget.position + retreatDirection.normalized * idealAttackRange;
+        UpdateAgentDestination(destination, force);
+    }
+
+    private void UpdateAgentDestination(Vector3 destination, bool force = false)
+    {
+        if ((!force && Time.time < nextPathRefreshTime) || !navMeshAgent.enabled)
         {
             return;
         }
 
         navMeshAgent.isStopped = false;
-        navMeshAgent.SetDestination(playerTarget.position);
+        navMeshAgent.SetDestination(destination);
         nextPathRefreshTime = Time.time + PathRefreshInterval;
     }
 
     private void TryStartAttack()
     {
-        if (Time.time < nextFireTime || !IsPlayerInAttackRange(out Vector3 directionToPlayer))
+        if (Time.time < nextFireTime || !IsPlayerInIdealRange(out Vector3 directionToPlayer))
         {
             return;
         }
@@ -258,6 +305,31 @@ public class EnemyController : MonoBehaviour
         stateEndTime = Time.time + attackWindupDuration;
         HoldPosition();
         FaceDirection(directionToPlayer);
+    }
+
+    private bool TryMoveAwayIfTooClose()
+    {
+        Vector3 directionToPlayer = playerTarget.position - transform.position;
+        directionToPlayer.y = 0f;
+        if (directionToPlayer.sqrMagnitude > tooCloseRange * tooCloseRange)
+        {
+            return false;
+        }
+
+        state = EnemyState.Chase;
+        ResetTelegraph();
+        MoveAwayFromPlayer(directionToPlayer, true);
+        FaceDirection(directionToPlayer);
+        return true;
+    }
+
+    private bool IsPlayerInIdealRange(out Vector3 directionToPlayer)
+    {
+        directionToPlayer = playerTarget.position - transform.position;
+        directionToPlayer.y = 0f;
+
+        float distanceSqr = directionToPlayer.sqrMagnitude;
+        return distanceSqr > tooCloseRange * tooCloseRange && distanceSqr <= idealAttackRange * idealAttackRange;
     }
 
     private void UpdateTelegraph()

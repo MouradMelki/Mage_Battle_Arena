@@ -3,7 +3,7 @@
 ## Enemy Bot Upgrade TODO
 
 - [x] Add an attack telegraph during wind-up, such as a glow, aim line, color pulse, or charging VFX.
-- [ ] Improve range discipline so the enemy chases when too far, holds at ideal range, and backs away when too close.
+- [x] Improve range discipline so the enemy chases when too far, holds at ideal range, and backs away when too close.
 - [ ] Add aim commitment near the end of wind-up so the player has a fair dodge window.
 - [ ] Add simple attack variation, such as alternating between a single shot and a short burst.
 - [ ] Add animation and VFX hooks for idle, move, wind-up, shoot, and death states.
