@@ -6,6 +6,12 @@
 [Bb]uilds/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+[Ss]treamingAssets/aa.meta
+[Ss]treamingAssets/aa/
+.utmp/
+crashlytics-build.properties
 
 # Visual Studio / Rider / VS Code generated files
 .vs/
@@ -26,11 +32,17 @@
 *.opendb
 *.VC.db
 sysinfo.txt
+*.tmp
+*.stackdump
 
 # Build artifacts
 *.apk
 *.aab
 *.unitypackage
+*.app
+*.exe
+*.pdb
+*.symbols.zip
 
 # OS files
 .DS_Store
