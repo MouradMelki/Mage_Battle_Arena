@@ -44,6 +44,9 @@ public class EnemyController : MonoBehaviour
     [SerializeField]
     private float attackWindupDuration = 0.35f;
     [SerializeField]
+    [Tooltip("Time before the wind-up ends when the enemy locks its shot direction.")]
+    private float aimCommitmentDuration = 0.12f;
+    [SerializeField]
     private float attackRecoveryDuration = 0.35f;
     [SerializeField]
     private float rotationSpeed = 540f;
@@ -74,7 +77,10 @@ public class EnemyController : MonoBehaviour
     private float nextFireTime;
     private float nextPathRefreshTime;
     private float stateEndTime;
+    private float aimCommitTime;
+    private Vector3 committedAimDirection;
     private bool isDead;
+    private bool hasCommittedAim;
     private EnemyState state = EnemyState.Chase;
 
     public bool IsDead => isDead;
@@ -141,13 +147,14 @@ public class EnemyController : MonoBehaviour
                 }
 
                 HoldPosition();
-                FacePlayer();
+                UpdateWindupAim();
                 if (Time.time >= stateEndTime)
                 {
                     ShootIfPlayerIsInRange();
                     nextFireTime = Time.time + normalAttack.FireRate;
                     state = EnemyState.Recover;
                     ResetTelegraph();
+                    ResetCommittedAim();
                     stateEndTime = Time.time + attackRecoveryDuration;
                 }
                 break;
@@ -189,6 +196,7 @@ public class EnemyController : MonoBehaviour
         IsRespawning = true;
         state = EnemyState.Respawning;
         ResetTelegraph();
+        ResetCommittedAim();
         if (navMeshAgent)
         {
             navMeshAgent.enabled = false;
@@ -203,6 +211,7 @@ public class EnemyController : MonoBehaviour
         IsRespawning = false;
         state = EnemyState.Chase;
         ResetTelegraph();
+        ResetCommittedAim();
 
         if (navMeshAgent)
         {
@@ -302,7 +311,11 @@ public class EnemyController : MonoBehaviour
         }
 
         state = EnemyState.Windup;
-        stateEndTime = Time.time + attackWindupDuration;
+        ResetCommittedAim();
+        float clampedWindupDuration = Mathf.Max(0f, attackWindupDuration);
+        float clampedCommitmentDuration = Mathf.Clamp(aimCommitmentDuration, 0f, clampedWindupDuration);
+        stateEndTime = Time.time + clampedWindupDuration;
+        aimCommitTime = stateEndTime - clampedCommitmentDuration;
         HoldPosition();
         FaceDirection(directionToPlayer);
     }
@@ -318,6 +331,7 @@ public class EnemyController : MonoBehaviour
 
         state = EnemyState.Chase;
         ResetTelegraph();
+        ResetCommittedAim();
         MoveAwayFromPlayer(directionToPlayer, true);
         FaceDirection(directionToPlayer);
         return true;
@@ -352,21 +366,69 @@ public class EnemyController : MonoBehaviour
         }
     }
 
-    private bool IsPlayerInAttackRange(out Vector3 directionToPlayer)
+    private void ResetCommittedAim()
     {
-        directionToPlayer = playerTarget.position - transform.position;
+        hasCommittedAim = false;
+        aimCommitTime = 0f;
+        committedAimDirection = Vector3.zero;
+    }
+
+    private void UpdateWindupAim()
+    {
+        if (!hasCommittedAim && Time.time >= aimCommitTime)
+        {
+            CommitAim();
+        }
+
+        if (hasCommittedAim)
+        {
+            FaceDirection(committedAimDirection);
+            return;
+        }
+
+        FacePlayer();
+    }
+
+    private void CommitAim()
+    {
+        Vector3 directionToPlayer = playerTarget.position - transform.position;
+        directionToPlayer.y = 0f;
+
+        if (directionToPlayer.sqrMagnitude <= MinAimSqrMagnitude)
+        {
+            directionToPlayer = transform.forward;
+            directionToPlayer.y = 0f;
+        }
+
+        if (directionToPlayer.sqrMagnitude <= MinAimSqrMagnitude)
+        {
+            directionToPlayer = Vector3.forward;
+        }
+
+        committedAimDirection = directionToPlayer.normalized;
+        hasCommittedAim = true;
+    }
+
+    private bool IsPlayerInAttackRange()
+    {
+        Vector3 directionToPlayer = playerTarget.position - transform.position;
         float range = normalAttack.Range + orbitRadius;
         return directionToPlayer.sqrMagnitude <= range * range;
     }
 
     private void ShootIfPlayerIsInRange()
     {
-        if (!IsPlayerInAttackRange(out Vector3 directionToPlayer))
+        if (!hasCommittedAim)
+        {
+            CommitAim();
+        }
+
+        if (!IsPlayerInAttackRange())
         {
             return;
         }
 
-        Shoot(directionToPlayer);
+        Shoot(committedAimDirection);
     }
 
     private void HoldPosition()
@@ -459,6 +521,7 @@ public class EnemyController : MonoBehaviour
         isDead = true;
         state = EnemyState.Dead;
         ResetTelegraph();
+        ResetCommittedAim();
         if (navMeshAgent)
         {
             navMeshAgent.enabled = false;
