@@ -2,8 +2,7 @@
 # Master Control Surface & Core Operational Rules
 
 ## 1. Environment Commands & Tech Stack
-- **Core Tech Stack:** Next.js (App Router), React, Tailwind CSS, TypeScript.
-- **Infrastructure Targets:** AWS Serverless (S3 static frontend, CloudFront CDN, Lambda API backend, DynamoDB state) OR Vercel Edge Runtime (v0.app execution context).
+to update
 - **Core Scripts:**
   - Local Dev Server: `npm run dev`
   - Build Check: `npm run build`
